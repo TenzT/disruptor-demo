@@ -5,6 +5,17 @@ import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
+import constant.EntrustBuySideEnum;
+import constant.EntrustStatusEnum;
+import disruptor.event.EntrustEvent;
+import disruptor.event.EntrustEventFactory;
+import disruptor.event.EntrustEventTranslator;
+import disruptor.handler.DepthHandler;
+import disruptor.handler.MatchingEventHandler;
+import disruptor.handler.JournalEntrustEventHandler;
+import disruptor.handler.ReplicationEntrustEventHandler;
+import disruptor.me.impls.LimitOrderMatchEngine;
+import disruptor.producer.EntrustEventProducer;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -12,15 +23,15 @@ import java.nio.ByteBuffer;
 
 public class QuickStart {
 
-    private Disruptor<LongEvent> disruptor;
-    private RingBuffer<LongEvent> ringBuffer;
-    private ByteBuffer byteBuffer = ByteBuffer.allocate(8);
+    private Disruptor<EntrustEvent> disruptor;
+    private RingBuffer<EntrustEvent> ringBuffer;
 
     @Before
     public void init() {
+
         int bufferSize = 1024;
 
-        Disruptor<LongEvent> disruptor = new Disruptor<>(new LongEventFactory(),
+        Disruptor<EntrustEvent> disruptor = new Disruptor<>(new EntrustEventFactory(),
                 bufferSize,
                 DaemonThreadFactory.INSTANCE,
                 ProducerType.SINGLE,        // create a SingleProducerSequencer
@@ -29,10 +40,10 @@ public class QuickStart {
 
         ringBuffer = disruptor.getRingBuffer();
 
-        disruptor.handleEventsWith(new LongEventHandler())
-                .then(new JournalLongEventHandler(),
-                        new ReplicationLongEventHandler())
-                .then(new ApplicationLongEventHandler());
+        disruptor.handleEventsWith(new JournalEntrustEventHandler(),new ReplicationEntrustEventHandler())
+                .then(new MatchingEventHandler(new LimitOrderMatchEngine()))
+                .then(new DepthHandler())
+        ;
         disruptor.start();
     }
 
@@ -45,11 +56,15 @@ public class QuickStart {
     @Test
     public void lambdaWay() throws InterruptedException {
 
-        LongEventTranslator translator = new LongEventTranslator();
-
         for (long l = 0; l < 100; l++) {
-            byteBuffer.putLong(0, l);
-            ringBuffer.publishEvent((event, sequence) -> event.setValue(byteBuffer.getLong(0)));
+            long orderId = l;
+            long quantity = l;
+            double price = l;
+            ringBuffer.publishEvent((entrust, sequence) -> {
+                entrust.setOrderId(orderId);
+                entrust.setPrice(price);
+                entrust.setQuantity(quantity);
+            });
 
             Thread.sleep(500);
         }
@@ -62,12 +77,14 @@ public class QuickStart {
      */
     @Test
     public void referenceWay() throws InterruptedException {
-        LongEventTranslator translator = new LongEventTranslator();
+        EntrustEventTranslator translator = new EntrustEventTranslator();
+        EntrustEvent newEntrust = new EntrustEvent(EntrustStatusEnum.PENDING, EntrustBuySideEnum.BUY, 0.0, 0, -1);
 
         for (long l = 0; l < 100; l++) {
-            byteBuffer.putLong(0, l);
-
-            ringBuffer.publishEvent(translator, byteBuffer);
+            newEntrust.setOrderId(l);
+            newEntrust.setPrice(l);
+            newEntrust.setQuantity(l);
+            ringBuffer.publishEvent(translator, newEntrust);
 
             Thread.sleep(500);
         }
@@ -80,11 +97,14 @@ public class QuickStart {
      */
     @Test
     public void wrapUpWay() throws InterruptedException {
-        LongEventProducer eventProducer = new LongEventProducer(ringBuffer);
+        EntrustEventProducer eventProducer = new EntrustEventProducer(ringBuffer, new EntrustEventTranslator());
+        EntrustEvent newEntrust = new EntrustEvent(EntrustStatusEnum.PENDING, EntrustBuySideEnum.BUY, 0.0, 0, -1);
 
         for (long l = 0; l < Long.MAX_VALUE; l++) {
-            byteBuffer.putLong(0, l);
-            eventProducer.onData(byteBuffer);
+            newEntrust.setOrderId(l);
+            newEntrust.setPrice(l);
+            newEntrust.setQuantity(l);
+            eventProducer.onData(newEntrust);
 
             Thread.sleep(500);
         }
