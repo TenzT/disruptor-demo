@@ -10,10 +10,7 @@ import constant.EntrustStatusEnum;
 import disruptor.event.EntrustEvent;
 import disruptor.event.EntrustEventFactory;
 import disruptor.event.EntrustEventTranslator;
-import disruptor.handler.DepthHandler;
-import disruptor.handler.MatchingEventHandler;
-import disruptor.handler.JournalEntrustEventHandler;
-import disruptor.handler.ReplicationEntrustEventHandler;
+import disruptor.handler.*;
 import disruptor.me.impls.LimitOrderMatchEngine;
 import disruptor.producer.EntrustEventProducer;
 import org.junit.Before;
@@ -43,6 +40,7 @@ public class QuickStart {
         disruptor.handleEventsWith(new JournalEntrustEventHandler(),new ReplicationEntrustEventHandler())
                 .then(new MatchingEventHandler(new LimitOrderMatchEngine()))
                 .then(new DepthHandler())
+                .then(new QuotesHandler())
         ;
         disruptor.start();
     }
